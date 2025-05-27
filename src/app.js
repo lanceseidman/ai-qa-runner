@@ -29,7 +29,7 @@ app.use(cors({
 app.use(express.json());
 
 // Serve static files
-const publicPath = join(__dirname, 'public');
+const publicPath = join(__dirname, '../public');
 console.log(`Serving static files from: ${publicPath}`);
 app.use(express.static(publicPath, {
     index: false
