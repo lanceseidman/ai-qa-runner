@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Web Workflow Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #actionLog {
+            max-height: 16rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-4xl w-full bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold mb-4">AI Web Workflow Analyzer</h1>
+        <form id="workflowForm" class="space-y-4">
+            <div>
+                <label for="websiteUrl" class="block text-sm font-medium text-gray-700">Website URL</label>
+                <input
+                    id="websiteUrl"
+                    type="url"
+                    required
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    placeholder="https://example.com"
+                />
+            </div>
+            <div>
+                <label for="workflowDescription" class="block text-sm font-medium text-gray-700">Test Instructions</label>
+                <textarea
+                    id="workflowDescription"
+                    required
+                    rows="4"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    placeholder="e.g., Go to the website and find the IP address"
+                ></textarea>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label for="waitTime" class="block text-sm font-medium text-gray-700">Wait Time (seconds)</label>
+                    <input
+                        id="waitTime"
+                        type="number"
+                        value="5"
+                        min="1"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    />
+                </div>
+                <div>
+                    <label for="userAgent" class="block text-sm font-medium text-gray-700">Device Type</label>
+                    <select
+                        id="userAgent"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    >
+                        <option value="desktop">Desktop</option>
+                        <option value="mobile">Mobile</option>
+                        <option value="tablet">Tablet</option>
+                    </select>
+                </div>
+                <div class="flex items-center mt-6">
+                    <input
+                        id="screenshots"
+                        type="checkbox"
+                        checked
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label for="screenshots" class="ml-2 block text-sm text-gray-900">Capture Screenshots</label>
+                </div>
+            </div>
+            <button
+                id="submitBtn"
+                type="submit"
+                class="w-full py-2 px-4 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400"
+            >
+                Start AI Analysis
+            </button>
+        </form>
+
+        <div id="statusSection" class="mt-6 hidden">
+            <div class="flex items-center">
+                <div
+                    id="statusDot"
+                    class="w-3 h-3 rounded-full mr-2 bg-gray-400"
+                ></div>
+                <span id="statusText" class="text-sm text-gray-700">Ready to start</span>
+            </div>
+        </div>
+
+        <div id="resultsContainer" class="mt-6 hidden">
+            <h2 class="text-lg font-semibold">Results</h2>
+            <pre id="jsonOutput" class="bg-gray-50 p-4 rounded-md overflow-x-auto text-sm"></pre>
+        </div>
+
+        <div id="screenshotsSection" class="mt-6 hidden">
+            <h2 class="text-lg font-semibold">Screenshots</h2>
+            <div id="screenshotsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+    </div>
+
+    <script>
+        const apiEndpoint = 'http://localhost:3003';
+
+        function updateStatus(status, message) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            statusSection.classList.remove('hidden');
+            statusDot.className = `w-3 h-3 rounded-full mr-2 ${
+                status === 'running' ? 'bg-yellow-400' :
+                status === 'success' ? 'bg-green-400' :
+                status === 'error' ? 'bg-red-400' : 'bg-gray-400'
+            }`;
+            statusText.textContent = message;
+        }
+
+        function displayScreenshots(screenshots) {
+            const screenshotsSection = document.getElementById('screenshotsSection');
+            const screenshotsGrid = document.getElementById('screenshotsGrid');
+            screenshotsSection.classList.remove('hidden');
+            screenshotsGrid.innerHTML = '';
+            screenshots.forEach((screenshot) => {
+                const div = document.createElement('div');
+                div.className = 'border rounded-lg overflow-hidden';
+                div.innerHTML = `
+                    <div class="bg-gray-100 p-3">
+                        <h4 class="font-semibold">${screenshot.description}</h4>
+                        <p class="text-sm text-gray-600">${new Date(screenshot.timestamp).toLocaleString()}</p>
+                    </div>
+                    <img src="${screenshot.path}" alt="${screenshot.description}" class="w-full h-auto" />
+                `;
+                screenshotsGrid.appendChild(div);
+            });
+        }
+
+        async function pollResults(analysisId) {
+            try {
+                const response = await fetch(`${apiEndpoint}/api/results/${analysisId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                if (data.status === 'running') {
+                    updateStatus('running', data.message || 'Analysis in progress...');
+                    setTimeout(() => pollResults(analysisId), 2000); // Poll every 2 seconds
+                } else {
+                    if (data.error) {
+                        updateStatus('error', data.message || 'Analysis failed');
+                        throw new Error(data.message);
+                    }
+                    jsonOutput.textContent = JSON.stringify(data, null, 2);
+                    resultsContainer.classList.remove('hidden');
+                    if (data.screenshots && data.screenshots.length > 0) {
+                        displayScreenshots(data.screenshots);
+                    }
+                    updateStatus(data.status, data.message || 'Analysis completed');
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+                updateStatus('error', `Error: ${error.message}`);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const workflowForm = document.getElementById('workflowForm');
+            const submitBtn = document.getElementById('submitBtn');
+            const statusSection = document.getElementById('statusSection');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const jsonOutput = document.getElementById('jsonOutput');
+
+            workflowForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+
+                const url = document.getElementById('websiteUrl').value;
+                const instructions = document.getElementById('workflowDescription').value;
+                const options = {
+                    waitTime: parseInt(document.getElementById('waitTime').value),
+                    screenshots: document.getElementById('screenshots').checked,
+                    userAgent: document.getElementById('userAgent').value,
+                };
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'AI Agent Working...';
+                statusSection.classList.remove('hidden');
+                resultsContainer.classList.add('hidden');
+                updateStatus('running', 'Starting analysis...');
+
+                try {
+                    const response = await fetch(`${apiEndpoint}/api/analyze-workflow`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ url, instructions, options }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.error) {
+                        updateStatus('error', data.message || 'Analysis failed');
+                        throw new Error(data.message);
+                    }
+
+                    updateStatus('running', data.message || 'Analysis started');
+                    pollResults(data.analysisId);
+                } catch (error) {
+                    console.error('Error:', error);
+                    updateStatus('error', `Error: ${error.message}`);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Start AI Analysis';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
