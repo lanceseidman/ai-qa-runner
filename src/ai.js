@@ -27,7 +27,8 @@ export async function runQATest(url, instructions, options = {}) {
         console.log('Launching Puppeteer browser...');
         browser = await puppeteer.launch({
             headless: 'new',
-            executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // macOS Chrome path
+            executablePath: '/usr/bin/google-chrome', // Linux Chrome path
+            //executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // macOS Chrome path
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
